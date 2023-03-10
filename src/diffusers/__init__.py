@@ -56,6 +56,7 @@ else:
         DanceDiffusionPipeline,
         DDIMPipeline,
         DDPMPipeline,
+        DDPMPipelineMask,
         DiffusionPipeline,
         DiTPipeline,
         ImagePipelineOutput,

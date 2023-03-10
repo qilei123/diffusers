@@ -1,1 +1,1 @@
-from .pipeline_ddpm import DDPMPipeline
+from .pipeline_ddpm import DDPMPipeline,DDPMPipelineMask
