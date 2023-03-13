@@ -176,11 +176,20 @@ class DDPMPipelineMask(DiffusionPipeline):
             image = self.scheduler.step(model_output, t, image, generator=generator).prev_sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
+        
+        bg_image = (bg_image / 2 + 0.5).clamp(0, 1)
+        
+        image_with_bg = image*0.5+bg_image*0.5
+        
         image = image.cpu().permute(0, 2, 3, 1).numpy()
+        
+        image_with_bg = image_with_bg.cpu().permute(0, 2, 3, 1).numpy()
+        
         if output_type == "pil":
             image = self.numpy_to_pil(image)
+            image_with_bg = self.numpy_to_pil(image_with_bg)
 
         if not return_dict:
-            return (image,)
+            return (image,image_with_bg)
 
         return ImagePipelineOutput(images=image)
