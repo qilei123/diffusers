@@ -179,7 +179,8 @@ class DDPMPipelineMask(DiffusionPipeline):
         
         bg_image = (bg_image / 2 + 0.5).clamp(0, 1)
         
-        image_with_bg = image*0.5+bg_image*0.5
+        #image_with_bg = image*0.5+bg_image*0.5
+        image_with_bg = image*mask+bg_image*(1-mask)
         
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         
