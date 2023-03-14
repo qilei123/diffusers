@@ -179,17 +179,20 @@ class DDPMPipelineMask(DiffusionPipeline):
         
         bg_image = (bg_image / 2 + 0.5).clamp(0, 1)
         
-        image_with_bg = image*0.5+bg_image*0.5
+        image_with_bg0 = image*0.5+bg_image*0.5
+        image_with_bg1 = image*mask+bg_image*(1-mask)
         
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         
-        image_with_bg = image_with_bg.cpu().permute(0, 2, 3, 1).numpy()
+        image_with_bg0 = image_with_bg0.cpu().permute(0, 2, 3, 1).numpy()
+        image_with_bg1 = image_with_bg1.cpu().permute(0, 2, 3, 1).numpy()
         
         if output_type == "pil":
             image = self.numpy_to_pil(image)
-            image_with_bg = self.numpy_to_pil(image_with_bg)
+            image_with_bg0 = self.numpy_to_pil(image_with_bg0)
+            image_with_bg1 = self.numpy_to_pil(image_with_bg1)
 
         if not return_dict:
-            return (image,image_with_bg)
+            return (image,image_with_bg0,image_with_bg1)
 
         return ImagePipelineOutput(images=image)
