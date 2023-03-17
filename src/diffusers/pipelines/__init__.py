@@ -16,7 +16,7 @@ except OptionalDependencyNotAvailable:
     from ..utils.dummy_pt_objects import *  # noqa F403
 else:
     from .dance_diffusion import DanceDiffusionPipeline
-    from .ddim import DDIMPipeline
+    from .ddim import DDIMPipeline,DDIMPipelineMask
     from .ddpm import DDPMPipeline,DDPMPipelineMask
     from .dit import DiTPipeline
     from .latent_diffusion import LDMSuperResolutionPipeline

@@ -1,1 +1,1 @@
-from .pipeline_ddim import DDIMPipeline
+from .pipeline_ddim import DDIMPipeline,DDIMPipelineMask
