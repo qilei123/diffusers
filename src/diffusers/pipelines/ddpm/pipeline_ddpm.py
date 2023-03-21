@@ -163,12 +163,16 @@ class DDPMPipelineMask(DiffusionPipeline):
         if (bg_image is not None) and (mask is not None):
             bg_image = bg_image.to(self.device)
             mask = mask.to(self.device)
-            image = image*mask+bg_image*(1-mask)
+            
         
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
 
         for t in self.progress_bar(self.scheduler.timesteps):
+            #在noise的基础上添加背景图片
+            if (bg_image is not None) and (mask is not None):
+                image = image*mask+bg_image*(1-mask)
+                            
             # 1. predict noise model_output
             model_output = self.unet(image, t).sample
 
