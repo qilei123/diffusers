@@ -501,6 +501,10 @@ class DreamBoothDataset4Med(Dataset):
             self.class_prompt = class_prompt
         else:
             self.class_data_root = None
+            
+        self.images_cache = []
+        self.images_cache_on = False
+        self.cache_images()
 
         self.image_transforms = transforms.Compose(
             [
@@ -513,10 +517,21 @@ class DreamBoothDataset4Med(Dataset):
 
     def __len__(self):
         return self._length
+    
+    def cache_images(self):
+        if self.images_cache_on:
+            pass
+        else:
+            for instance_image_path in self.instance_images_path:
+                self.images_cache.append(Image.open(instance_image_path))
+            self.images_cache_on = True
 
     def __getitem__(self, index):
         example = {}
-        instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
+        if self.images_cache_on:
+            instance_image = self.images_cache[index] 
+        else:
+            instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
         example["instance_images"] = self.image_transforms(instance_image)
