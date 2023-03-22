@@ -253,7 +253,7 @@ def parse_args():
     parser.add_argument(
         "--checkpointing_steps",
         type=int,
-        default=500,
+        default=10000,
         help=(
             "Save a checkpoint of the training state every X updates. These checkpoints can be used both as final"
             " checkpoints in case they are better than the last checkpoint and are suitable for resuming training"
@@ -293,6 +293,14 @@ def parse_args():
         default=False,
         help="crop with extended bbox",
     )
+    parser.add_argument(
+        "--bbox_extend_scale", type=float, default=1, help="when crop, scale to extend the bbox"
+    )    
+    
+    parser.add_argument(
+        "--dataset_id", type=int, default=0,choices = [0,1,2], help="when crop, scale to extend the bbox"
+    )  
+    
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -423,9 +431,9 @@ class DreamBoothDataset4Med(Dataset):
     ):
         #超参数，目前还只能在代码中修改
         self.with_crop = args.with_crop
-        self.bbox_extend = 1.5
+        self.bbox_extend = args.bbox_extend_scale
         
-        self.dataset_id = 2
+        self.dataset_id = args.dataset_id
         self.dataset_name = dataset_names[self.dataset_id]
         self.instance_data_folders = dataset_records[self.dataset_name]
         
@@ -822,7 +830,7 @@ def main():
         return batch
 
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn
+        train_dataset, batch_size=args.train_batch_size, shuffle=False, collate_fn=collate_fn
     )
 
     # Scheduler and math around the number of training steps.
@@ -831,6 +839,9 @@ def main():
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
+        
+    if args.max_train_steps <= 10:
+        args.max_train_steps = args.max_train_steps*len(train_dataloader)
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,

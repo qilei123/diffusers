@@ -194,8 +194,8 @@ def get_test_samples(preprocess=None,with_crop=True,blur_mask = False,
         return images,masks  
     else:
         return sample_images,sample_masks
-def load_test_data(instance_index=0):
-    images,masks = get_test_samples()
+def load_test_data(instance_index=0,with_crop = False,bbox_extend = 1):
+    images,masks = get_test_samples(with_crop = with_crop,bbox_extend=bbox_extend)
     
     assert len(images)>instance_index, "no more than "+str(instance_index+1)+" test images"
     
