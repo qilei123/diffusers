@@ -164,11 +164,13 @@ class DDPMPipelineMask(DiffusionPipeline):
             bg_image = bg_image.to(self.device)
             mask = mask.to(self.device)
             #image = image*mask+bg_image*(1-mask)
+
         
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
 
         for t in self.progress_bar(self.scheduler.timesteps):
+
             if (bg_image is not None) and (mask is not None):
                 # 0. 在还原的每一个步骤都加上背景图片
                 image = image*mask+bg_image*(1-mask)

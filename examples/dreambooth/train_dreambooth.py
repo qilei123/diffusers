@@ -330,7 +330,17 @@ def parse_args(input_args=None):
             " https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_grad.html"
         ),
     )
-
+    #----------------custom----------------
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="DreamBoothDataset",
+        choices=["DreamBoothDataset", "DreamBoothDataset4Med"],
+        help=(
+            "dataset name that can be used in the training process"
+        ),
+    )
+    
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:
@@ -435,6 +445,118 @@ class DreamBoothDataset(Dataset):
 
         return example
 
+from meddatasets import dataset_records,dataset_names
+from meddatasets import load_with_coco_per_ann
+class DreamBoothDataset4Med(Dataset):
+    """
+    A dataset to prepare the instance and class images with the prompts for fine-tuning the model.
+    It pre-processes the images and the tokenizes prompts.
+    """
+
+    def __init__(
+        self,
+        instance_data_root,
+        instance_prompt,
+        tokenizer,
+        class_data_root=None,
+        class_prompt=None,
+        size=512,
+        center_crop=False,
+    ):
+        dataset_name = dataset_names[1]
+        self.instance_data_folders = dataset_records[dataset_name]
+        
+        self.size = size
+        self.center_crop = center_crop
+        self.tokenizer = tokenizer
+
+        self.instance_data_root = Path(instance_data_root)
+        if not self.instance_data_root.exists():
+            raise ValueError(f"Instance {self.instance_data_root} images root doesn't exists.")
+
+        self.instances = []
+        
+        self.instance_images_path = []#list(Path(instance_data_root).iterdir())
+        
+        for instance_data_folder in self.instance_data_folders:
+            
+            temp_instances,temp_instance_images_path = load_with_coco_per_ann(
+                os.path.join(instance_data_root,instance_data_folder),
+                cat_ids=self.instance_data_folders[instance_data_folder])
+            
+            self.instances += temp_instances
+            
+            self.instance_images_path += temp_instance_images_path
+        
+        self.num_instance_images = len(self.instance_images_path)
+        self.instance_prompt = instance_prompt
+        self._length = self.num_instance_images
+
+        if class_data_root is not None:
+            self.class_data_root = Path(class_data_root)
+            self.class_data_root.mkdir(parents=True, exist_ok=True)
+            self.class_images_path = list(self.class_data_root.iterdir())
+            self.num_class_images = len(self.class_images_path)
+            self._length = max(self.num_class_images, self.num_instance_images)
+            self.class_prompt = class_prompt
+        else:
+            self.class_data_root = None
+            
+        self.images_cache = []
+        self.images_cache_on = False
+        self.cache_images()
+
+        self.image_transforms = transforms.Compose(
+            [
+                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),
+            ]
+        )
+
+    def __len__(self):
+        return self._length
+    
+    def cache_images(self):
+        if self.images_cache_on:
+            pass
+        else:
+            for instance_image_path in self.instance_images_path:
+                self.images_cache.append(Image.open(instance_image_path))
+            self.images_cache_on = True
+
+    def __getitem__(self, index):
+        example = {}
+        if self.images_cache_on:
+            instance_image = self.images_cache[index] 
+        else:
+            instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
+        if not instance_image.mode == "RGB":
+            instance_image = instance_image.convert("RGB")
+        example["instance_images"] = self.image_transforms(instance_image)
+        example["instance_prompt_ids"] = self.tokenizer(
+            self.instance_prompt,
+            truncation=True,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            return_tensors="pt",
+        ).input_ids
+
+        if self.class_data_root:
+            class_image = Image.open(self.class_images_path[index % self.num_class_images])
+            if not class_image.mode == "RGB":
+                class_image = class_image.convert("RGB")
+            example["class_images"] = self.image_transforms(class_image)
+            example["class_prompt_ids"] = self.tokenizer(
+                self.class_prompt,
+                truncation=True,
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                return_tensors="pt",
+            ).input_ids
+
+        return example
 
 def collate_fn(examples, with_prior_preservation=False):
     input_ids = [example["instance_prompt_ids"] for example in examples]
@@ -709,7 +831,8 @@ def main(args):
     )
 
     # Dataset and DataLoaders creation:
-    train_dataset = DreamBoothDataset(
+    
+    train_dataset = eval(args.dataset)(
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
         class_data_root=args.class_data_dir if args.with_prior_preservation else None,
