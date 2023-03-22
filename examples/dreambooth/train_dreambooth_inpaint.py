@@ -298,7 +298,7 @@ def parse_args():
     )    
     
     parser.add_argument(
-        "--dataset_id", type=int, default=0,choices = [0,1,2], help="when crop, scale to extend the bbox"
+        "--dataset_id", type=int, default=0,choices = [0,1,2,3], help="when crop, scale to extend the bbox"
     )  
     
 
@@ -412,7 +412,7 @@ class DreamBoothDataset(Dataset):
 
 
 from meddatasets import dataset_records,dataset_names
-from meddatasets import load_with_coco_per_ann,polygon2vertex_coords,poly2mask,preprocess
+from meddatasets import load_with_coco_per_ann,polygon2vertex_coords,poly2mask,preprocess,load_polyp
 class DreamBoothDataset4Med(Dataset):
     """
     A dataset to prepare the instance and class images with the prompts for fine-tuning the model.
@@ -449,9 +449,14 @@ class DreamBoothDataset4Med(Dataset):
         
         self.instance_images_path = []#list(Path(instance_data_root).iterdir())
         
+        if self.dataset_name=='polyp1':
+            load_data_fn = load_polyp
+        else:
+            load_data_fn = load_with_coco_per_ann
+        
         for instance_data_folder in self.instance_data_folders:
             
-            temp_instances,temp_instance_images_path = load_with_coco_per_ann(
+            temp_instances,temp_instance_images_path = load_data_fn(
                 os.path.join(instance_data_root,instance_data_folder),
                 cat_ids=self.instance_data_folders[instance_data_folder])
             

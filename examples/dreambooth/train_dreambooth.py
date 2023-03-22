@@ -22,6 +22,7 @@ import os
 import warnings
 from pathlib import Path
 from typing import Optional
+import pickle
 
 import accelerate
 import torch
@@ -50,8 +51,6 @@ from diffusers.utils.import_utils import is_xformers_available
 check_min_version("0.13.0.dev0")
 
 logger = get_logger(__name__)
-logging.getLogger("Python").setLevel(logging.WARNING)
-logging.getLogger("Coding").setLevel(logging.WARNING)
 
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
     text_encoder_config = PretrainedConfig.from_pretrained(
@@ -470,14 +469,14 @@ class DreamBoothDataset4Med(Dataset):
         size=512,
         center_crop=False,
     ):
-        self.dataset_name = dataset_names[1]
+        self.dataset_name = dataset_names[2]
         self.instance_data_folders = dataset_records[self.dataset_name]
         
         self.size = size
         self.center_crop = center_crop
         self.tokenizer = tokenizer
         
-        self.with_crop = True
+        self.with_crop = False
         self.bbox_extend = 1.5
 
         self.instance_data_root = Path(instance_data_root)
@@ -520,7 +519,7 @@ class DreamBoothDataset4Med(Dataset):
         self.image_transforms = transforms.Compose(
             [
                 transforms.ToTensor(),
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.Resize((size,size), interpolation=transforms.InterpolationMode.BILINEAR),
                 #transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
                 
                 transforms.Normalize([0.5], [0.5]),
@@ -529,7 +528,7 @@ class DreamBoothDataset4Med(Dataset):
         self.mask_transforms = transforms.Compose(
             [
                 transforms.ToTensor(),
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.Resize((size,size), interpolation=transforms.InterpolationMode.BILINEAR),
             ]
         )
 
@@ -540,10 +539,22 @@ class DreamBoothDataset4Med(Dataset):
         if self.images_cache_on:
             pass
         else:
-            for instance_image_path,instance in zip(self.instance_images_path,self.instances):
-                image,mask = self.preprocess(instance_image_path,instance)
-                self.images_cache.append(image)
-                self.masks_cache.append(mask)
+            if os.path.isfile(self.dataset_name+".cache"):
+                fptr = open(self.dataset_name+".cache", "rb")
+                cache_datas = pickle.load(fptr)
+                fptr.close() 
+                self.images_cache = cache_datas['images_cache'] 
+                self.masks_cache = cache_datas['masks_cache']              
+            else:
+                for instance_image_path,instance in zip(self.instance_images_path,self.instances):
+                    image,mask = self.preprocess(instance_image_path,instance)
+                    self.images_cache.append(image)
+                    self.masks_cache.append(mask)
+                    
+                cache_datas = {"images_cache":self.images_cache,"masks_cache":self.masks_cache}
+                fptr = open(self.dataset_name+".cache", "wb")  # open file in write binary mode
+                pickle.dump(cache_datas, fptr)  # dump list data into file 
+                fptr.close()  
                 
             self.images_cache_on = True
 
@@ -925,6 +936,9 @@ def main(args):
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
+        
+    if args.max_train_steps <= 10:
+        args.max_train_steps = args.max_train_steps*len(train_dataloader)
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
