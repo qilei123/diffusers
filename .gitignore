@@ -182,3 +182,5 @@ datasets
 *.cache
 
 .gitignore
+
+*.sh
