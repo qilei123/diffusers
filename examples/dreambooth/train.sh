@@ -1,5 +1,5 @@
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="/home/qilei/DEVELOPMENT/diffusers/datasets/"
+export INSTANCE_DIR="/home/ycao/DEVELOPMENTS/diffusers/datasets/"
 export OUTPUT_DIR="output/DreamBoothDataset4Med/"
 
 accelerate launch  --mixed_precision="fp16" train_dreambooth.py \
@@ -15,4 +15,4 @@ accelerate launch  --mixed_precision="fp16" train_dreambooth.py \
   --learning_rate=5e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --max_train_steps=400
+  --max_train_steps=1000

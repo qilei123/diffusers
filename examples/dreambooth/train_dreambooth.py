@@ -50,7 +50,8 @@ from diffusers.utils.import_utils import is_xformers_available
 check_min_version("0.13.0.dev0")
 
 logger = get_logger(__name__)
-
+logging.getLogger("Python").setLevel(logging.WARNING)
+logging.getLogger("Coding").setLevel(logging.WARNING)
 
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
     text_encoder_config = PretrainedConfig.from_pretrained(
@@ -509,7 +510,7 @@ class DreamBoothDataset4Med(Dataset):
         self.image_transforms = transforms.Compose(
             [
                 transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                #transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
             ]
