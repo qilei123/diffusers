@@ -1,6 +1,6 @@
 #from train_dreambooth import DreamBoothDataset4Med
 from train_dreambooth_inpaint import DreamBoothDataset4Med
-from meddatasets import load_test_data
+from meddatasets import load_test_data,patch_on_original_image
 
 def test_DreamBoothDataset4Med():
     dataset4med = eval("DreamBoothDataset4Med")("datasets","a photo of gastroscopy disease",None)
@@ -13,6 +13,7 @@ def test_load_test_data():
     mask.convert("L").save("temp_msk.png")
 
 if __name__ == "__main__":
-    test_DreamBoothDataset4Med()
+    #test_DreamBoothDataset4Med()
     #test_load_test_data()
+    patch_on_original_image()
     pass
