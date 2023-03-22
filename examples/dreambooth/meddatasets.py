@@ -24,7 +24,7 @@ dataset_records = {"dataset1":
                 }
                 }
 
-def load_with_coco_per_ann(root_dir,image_folder='images',
+def load_with_coco_per_ann(root_dir,image_folder='crop_images',
                            ann_file_dir='annotations/instances_default.json', cat_ids=[1]):
     coco = COCO(os.path.join(root_dir,ann_file_dir))
     
