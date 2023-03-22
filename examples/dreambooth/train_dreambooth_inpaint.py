@@ -3,6 +3,7 @@ import hashlib
 import itertools
 import math
 import os
+import pickle
 import random
 from pathlib import Path
 from typing import Optional
@@ -285,6 +286,13 @@ def parse_args():
         default=False,
         help="load dataset with mask in medical images",
     )
+    
+    parser.add_argument(
+        "--with_crop",
+        action="store_true",
+        default=False,
+        help="crop with extended bbox",
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -302,6 +310,8 @@ def parse_args():
 
     return args
 
+
+args = parse_args()
 
 class DreamBoothDataset(Dataset):
     """
@@ -411,15 +421,17 @@ class DreamBoothDataset4Med(Dataset):
         size=512,
         center_crop=False,
     ):
-        self.dataset_name = dataset_names[1]
+        #超参数，目前还只能在代码中修改
+        self.with_crop = args.with_crop
+        self.bbox_extend = 1.5
+        
+        self.dataset_id = 2
+        self.dataset_name = dataset_names[self.dataset_id]
         self.instance_data_folders = dataset_records[self.dataset_name]
         
         self.size = size
         self.center_crop = center_crop
         self.tokenizer = tokenizer
-        
-        self.with_crop = True
-        self.bbox_extend = 1.5
 
         self.instance_data_root = Path(instance_data_root)
         if not self.instance_data_root.exists():
@@ -458,25 +470,9 @@ class DreamBoothDataset4Med(Dataset):
         self.images_cache_on = False
         self.cache_images()
 
-        self.image_transforms = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                #transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
-                
-                transforms.Normalize([0.5], [0.5]),
-            ]
-        )
-        self.mask_transforms = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-            ]
-        )
-
         self.image_transforms_resize_and_crop = transforms.Compose(
             [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.Resize((size,size), interpolation=transforms.InterpolationMode.BILINEAR),
                 #去掉crop的操作，已保障图像的完整性
                 #transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
             ]
@@ -496,10 +492,22 @@ class DreamBoothDataset4Med(Dataset):
         if self.images_cache_on:
             pass
         else:
-            for instance_image_path,instance in zip(self.instance_images_path,self.instances):
-                image,mask = self.preprocess(instance_image_path,instance)
-                self.images_cache.append(image)
-                self.masks_cache.append(mask)
+            if os.path.isfile(self.dataset_name+".cache"):
+                fptr = open(self.dataset_name+".cache", "rb")
+                cache_datas = pickle.load(fptr)
+                fptr.close() 
+                self.images_cache = cache_datas['images_cache'] 
+                self.masks_cache = cache_datas['masks_cache']              
+            else:
+                for instance_image_path,instance in zip(self.instance_images_path,self.instances):
+                    image,mask = self.preprocess(instance_image_path,instance)
+                    self.images_cache.append(image)
+                    self.masks_cache.append(mask)
+                    
+                cache_datas = {"images_cache":self.images_cache,"masks_cache":self.masks_cache}
+                fptr = open(self.dataset_name+".cache", "wb")  # open file in write binary mode
+                pickle.dump(cache_datas, fptr)  # dump list data into file 
+                fptr.close()                 
                 
             self.images_cache_on = True
 
@@ -521,31 +529,34 @@ class DreamBoothDataset4Med(Dataset):
             image = image.crop((int(instance['bbox'][0]),int(instance['bbox'][1]),
                                 int(instance['bbox'][0]+instance['bbox'][2]),int(instance['bbox'][1]+instance['bbox'][3])))                
         
-        mask = poly2mask(*polygon2vertex_coords(instance['polygon']),(instance['img_shape'][1],instance['img_shape'][0]))
-        
+        mask = 255*poly2mask(*polygon2vertex_coords(instance['polygon']),(instance['img_shape'][1],instance['img_shape'][0]))
+        mask = Image.fromarray(mask).convert("L")
         if self.with_crop:
-            mask = mask[int(instance['bbox'][1]):int(instance['bbox'][1]+instance['bbox'][3]),
-                        int(instance['bbox'][0]):int(instance['bbox'][0]+instance['bbox'][2])]
+            mask =  mask.crop((int(instance['bbox'][0]),int(instance['bbox'][1]),
+                                int(instance['bbox'][0]+instance['bbox'][2]),int(instance['bbox'][1]+instance['bbox'][3])))  
             
         return image,mask
 
     def __getitem__(self, index):
         example = {}
+        real_index = index % self.num_instance_images
         if self.images_cache_on:
-            instance_mask = self.masks_cache[index]
-            instance_image = self.images_cache[index] 
+            instance_mask = self.masks_cache[real_index]
+            instance_image = self.images_cache[real_index] 
         else:
-            instance_image,instance_mask = self.preprocess(self.instance_images_path[index % self.num_instance_images],
-                                                      self.instances[index % self.num_instance_images])
+            instance_image,instance_mask = self.preprocess(self.instance_images_path[real_index],
+                                                      self.instances[real_index])
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
         
-        #temp_msk = Image.fromarray(instance_mask*255).convert("RGB")
-        #temp_msk.save("temp_msk.png")
+        instance_image = self.image_transforms_resize_and_crop(instance_image)
         
+        example["PIL_images"] = instance_image
         example["instance_images"] = self.image_transforms(instance_image)
-        example["instance_masks"] = self.mask_transforms(instance_mask).repeat(4,1,1)
-        
+        if args.with_mask:
+            example["instance_masks"] = self.image_transforms_resize_and_crop(instance_mask)
+
+
         example["instance_prompt_ids"] = self.tokenizer(
             self.instance_prompt,
             truncation=True,
@@ -598,7 +609,7 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 
 
 def main():
-    args = parse_args()
+    #args = parse_args()
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator = Accelerator(
@@ -757,12 +768,18 @@ def main():
     def collate_fn(examples):
         input_ids = [example["instance_prompt_ids"] for example in examples]
         pixel_values = [example["instance_images"] for example in examples]
+        if args.with_mask:
+            mask_values = [example["instance_masks"] for example in examples]
 
         # Concat class and instance examples for prior preservation.
         # We do this to avoid doing two forward passes.
         if args.with_prior_preservation:
             input_ids += [example["class_prompt_ids"] for example in examples]
             pixel_values += [example["class_images"] for example in examples]
+            
+            if args.with_mask:
+                mask_values += [example["instance_masks"] for example in examples]            
+            
             pior_pil = [example["class_PIL_images"] for example in examples]
 
         masks = []
@@ -770,7 +787,11 @@ def main():
         for example in examples:
             pil_image = example["PIL_images"]
             # generate a random mask
-            mask = random_mask(pil_image.size, 1, False)
+            if args.with_mask:
+                mask = example["instance_masks"]
+            else:
+                mask = random_mask(pil_image.size, 1, False)
+            
             # prepare mask and masked image
             mask, masked_image = prepare_mask_and_masked_image(pil_image, mask)
 
@@ -780,7 +801,10 @@ def main():
         if args.with_prior_preservation:
             for pil_image in pior_pil:
                 # generate a random mask
-                mask = random_mask(pil_image.size, 1, False)
+                if args.with_mask:
+                    mask = example["instance_masks"]
+                else:
+                    mask = random_mask(pil_image.size, 1, False)
                 # prepare mask and masked image
                 mask, masked_image = prepare_mask_and_masked_image(pil_image, mask)
 
@@ -791,6 +815,7 @@ def main():
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
         input_ids = tokenizer.pad({"input_ids": input_ids}, padding=True, return_tensors="pt").input_ids
+        #input_ids = torch.cat(input_ids, dim=0)
         masks = torch.stack(masks)
         masked_images = torch.stack(masked_images)
         batch = {"input_ids": input_ids, "pixel_values": pixel_values, "masks": masks, "masked_images": masked_images}

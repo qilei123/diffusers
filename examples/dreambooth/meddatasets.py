@@ -105,7 +105,7 @@ def get_test_samples(preprocess=None,with_crop=True,blur_mask = False,
                      dynamic_blur_mask = False,blur_kernel_scale = 10,
                      bbox_extend=1.5,stack = False):
     #todo:这里需要将四张测试图片加载进来，并且需要进行preprocess
-    data_folder = 'test_med_data'
+    data_folder = '/home/qilei/DEVELOPMENT/diffusers/examples/dreambooth/test_med_data'
     test_images_record = open(os.path.join(data_folder,'choose_test_gastro_images.txt'))
     
     records = []

@@ -1,4 +1,5 @@
-from train_dreambooth import DreamBoothDataset4Med
+#from train_dreambooth import DreamBoothDataset4Med
+from train_dreambooth_inpaint import DreamBoothDataset4Med
 from meddatasets import load_test_data
 
 def test_DreamBoothDataset4Med():
@@ -12,6 +13,6 @@ def test_load_test_data():
     mask.convert("L").save("temp_msk.png")
 
 if __name__ == "__main__":
-    #test_DreamBoothDataset4Med()
-    test_load_test_data()
+    test_DreamBoothDataset4Med()
+    #test_load_test_data()
     pass

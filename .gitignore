@@ -176,3 +176,9 @@ tags
 datasets
 
 *output
+
+*test_med_data
+
+*.cache
+
+.gitignore

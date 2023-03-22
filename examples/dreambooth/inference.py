@@ -18,7 +18,7 @@ def inference_basic():
         image.save(save_dir+str(i).zfill(5)+".png")
         
 def inference_repaint():
-    model_id = "output/DreamBoothDataset4Med"
+    model_id = "/home/qilei/DEVELOPMENT/diffusers/examples/dreambooth/output/DreamBoothDataset4Med_inpaint_crop_mask_bbox1.5"
     pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
     pipe.safety_checker = lambda images, clip_input: (images, False)
     save_dir = model_id+"/inference_images/"
@@ -26,8 +26,9 @@ def inference_repaint():
     prompt = "a photo of gastroscopy disease"
     
     original_image,mask = load_test_data()
-    original_image = original_image.resize((256,256))
-    mask = mask.convert("RGB").resize((256,256))
+    size = 512
+    original_image = original_image.resize((size,size))
+    mask = mask.convert("L").resize((size,size))
     
     for i in range(10):
         image = pipe(prompt, image = original_image, mask_image = mask).images[0]
