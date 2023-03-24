@@ -10,10 +10,14 @@ import json
 from math import floor
 from scipy import ndimage
 import glob
+from pathlib import Path 
 
-gastro_disease_prompt = 'a photo of gastroscopy disease'
-
-dataset_names = ['dataset_test','dataset1','dataset2','polyp1']
+PROMPTS=["a photo of gastroscopy disease",
+         "a photo of NBI disease",
+         "a photo of endoscopy polyp"
+]
+ANN_FILE_DIRS=['annotations/crop_instances_default.json','annotation/train','annotations']
+IMAGE_FOLDERS=['crop_images','','images']
 
 dataset_records = {"dataset_test":{"gastro_cancer/xiehe_far_1":[1],},
                 "dataset1":
@@ -34,8 +38,24 @@ dataset_records = {"dataset_test":{"gastro_cancer/xiehe_far_1":[1],},
                 "gastro_cancer/gastro8-12/协和21-11月~2022-5癌变已标注/协和2021-11月_2022-5癌变_20221121":[1,4,5], #8
                 },
                 "polyp1":
-                    {"polyp/huiwei_dataset_fuji_additional_V1":[1],}
+                    {"dechun_polyp/huiwei_dataset_fuji_additional_V1":[1],},
+                "polyp2":
+                    {"dechun_polyp/pentax_additional_triain_set_v1":[1],},  
+                "polyp3":
+                    {"dechun_polyp/polyp_dataset_v2":[1],},              
                 }
+
+dataset_prompts = {'dataset_test':PROMPTS[0],'dataset1':PROMPTS[0],'dataset2':PROMPTS[0],
+                   'polyp1':PROMPTS[2],'polyp2':PROMPTS[2],'polyp3':PROMPTS[2]}
+
+dataset_ann_file_dirs = {'dataset_test':ANN_FILE_DIRS[0],'dataset1':ANN_FILE_DIRS[0],'dataset2':ANN_FILE_DIRS[0],
+                   'polyp1':ANN_FILE_DIRS[2],'polyp2':ANN_FILE_DIRS[2],'polyp3':ANN_FILE_DIRS[1]}
+
+dataset_image_folders = {'dataset_test':IMAGE_FOLDERS[0],'dataset1':IMAGE_FOLDERS[0],'dataset2':IMAGE_FOLDERS[0],
+                   'polyp1':IMAGE_FOLDERS[1],'polyp2':IMAGE_FOLDERS[1],'polyp3':IMAGE_FOLDERS[2]}
+
+dataset_names = ['dataset_test','dataset1','dataset2','polyp1','polyp2','polyp3']
+dataset_records_id = [i for i in range(len(dataset_names))]
 
 def extend_bbox(bbox,bbox_extend_scale):
     bbox[0] -= bbox[2]*(bbox_extend_scale-1)/2
@@ -70,7 +90,10 @@ def load_with_coco_per_ann(root_dir,image_folder='crop_images',
             instance["cat_id"] = ann["category_id"]
             
             img = coco.loadImgs([ann["image_id"]])[0]
-            instance["img_dir"] = os.path.join(root_dir,image_folder,img['file_name'])
+            instance["img_dir"] = os.path.join(root_dir,image_folder,img['file_name']).replace("images/images","images")
+            if not os.path.isfile(instance["img_dir"]):
+                print(instance["img_dir"])
+                continue
             instance["img_shape"] = [img['width'],img['height']]
             instance["img_width"],instance["img_height"] = img['width'],img['height']
             
@@ -86,15 +109,17 @@ def load_with_coco_per_ann(root_dir,image_folder='crop_images',
             
     return instances, instance_images_path
 
-def load_polyp(root_dir,images_folder='',anns_folder='annotations',cat_ids = [1,]):
+def load_polyp(root_dir,images_folder='images',ann_file_dir='annotations',cat_ids = [1,]):
     
-    annotation_dir_list = glob.glob(os.path.join(root_dir,anns_folder,"*.json"))
+    #annotation_dir_list = glob.glob(os.path.join(root_dir,ann_file_dir,"*.json"))
+    annotation_dir_list = Path(os.path.join(root_dir,ann_file_dir)).rglob('*.json')
+    
     annotation_file_list = [os.path.basename(annotation_dir) for annotation_dir in annotation_dir_list]
     
     instances, instance_images_path = [],[]
     
     for annotation_file in annotation_file_list:
-        temp_instances,temp_instance_images_path = load_with_coco_per_ann(root_dir,images_folder,os.path.join(anns_folder,annotation_file),cat_ids=cat_ids)
+        temp_instances,temp_instance_images_path = load_with_coco_per_ann(root_dir,images_folder,os.path.join(ann_file_dir,annotation_file),cat_ids=cat_ids)
         instances += temp_instances
         instance_images_path += temp_instance_images_path
         
@@ -142,7 +167,7 @@ def get_test_samples(preprocess=None,with_crop=True,blur_mask = False,
                      dynamic_blur_mask = False,blur_kernel_scale = 10,
                      bbox_extend=1.5,stack = False):
     #todo:这里需要将四张测试图片加载进来，并且需要进行preprocess
-    data_folder = '/home/qilei/DEVELOPMENT/diffusers/examples/dreambooth/test_med_data'
+    data_folder = 'test_med_data'
     test_images_record = open(os.path.join(data_folder,'choose_test_gastro_images.txt'))
     
     records = []
@@ -315,6 +340,7 @@ def patch_on_original_image(patch_direct = True,bbox_extend = 1.2):
 
 if __name__ == "__main__":
     #patch_on_original_image(False)
-    o1,o2 = load_polyp("/home/qilei/DEVELOPMENT/diffusers/datasets/polyp/huiwei_dataset_fuji_additional_V1")
+    o1,o2 = load_polyp("/home/ycao/DEVELOPMENTS/diffusers/datasets/dechun_polyp/polyp_dataset_v2",
+                       images_folder="images",anns_folder="annotation/train")
     print(len(o2))
     

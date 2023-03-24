@@ -32,13 +32,15 @@ from diffusers import (
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 
+from meddatasets import dataset_records_id,dataset_prompts, \
+                        dataset_ann_file_dirs,dataset_image_folders
+
 #from train_dreambooth import DreamBoothDataset4Med
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.13.0.dev0")
 
 logger = get_logger(__name__)
-
 
 def prepare_mask_and_masked_image(image, mask):
     image = np.array(image.convert("RGB"))
@@ -298,7 +300,7 @@ def parse_args():
     )    
     
     parser.add_argument(
-        "--dataset_id", type=int, default=0,choices = [0,1,2,3], help="when crop, scale to extend the bbox"
+        "--dataset_id", type=int, default=0,choices = dataset_records_id, help="when crop, scale to extend the bbox"
     )  
     
 
@@ -437,6 +439,8 @@ class DreamBoothDataset4Med(Dataset):
         self.dataset_name = dataset_names[self.dataset_id]
         self.instance_data_folders = dataset_records[self.dataset_name]
         
+        args.instance_prompt = dataset_prompts[self.dataset_name]
+        
         self.size = size
         self.center_crop = center_crop
         self.tokenizer = tokenizer
@@ -449,7 +453,7 @@ class DreamBoothDataset4Med(Dataset):
         
         self.instance_images_path = []#list(Path(instance_data_root).iterdir())
         
-        if self.dataset_name=='polyp1':
+        if 'polyp' in self.dataset_name:
             load_data_fn = load_polyp
         else:
             load_data_fn = load_with_coco_per_ann
@@ -458,6 +462,8 @@ class DreamBoothDataset4Med(Dataset):
             
             temp_instances,temp_instance_images_path = load_data_fn(
                 os.path.join(instance_data_root,instance_data_folder),
+                images_folder=dataset_image_folders[self.dataset_name],
+                ann_file_dir=dataset_ann_file_dirs[self.dataset_name],
                 cat_ids=self.instance_data_folders[instance_data_folder])
             
             self.instances += temp_instances
@@ -465,7 +471,7 @@ class DreamBoothDataset4Med(Dataset):
             self.instance_images_path += temp_instance_images_path
         
         self.num_instance_images = len(self.instance_images_path)
-        self.instance_prompt = instance_prompt
+        self.instance_prompt = dataset_prompts[self.dataset_name]
         self._length = self.num_instance_images
 
         if class_data_root is not None:
