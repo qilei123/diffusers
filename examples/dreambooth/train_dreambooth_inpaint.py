@@ -33,7 +33,9 @@ from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 
 from meddatasets import dataset_records_id,dataset_prompts, \
-                        dataset_ann_file_dirs,dataset_image_folders
+                        dataset_ann_file_dirs,dataset_image_folders, \
+                        dataset_records,dataset_names
+from meddatasets import load_with_coco_per_ann,polygon2vertex_coords,poly2mask,load_polyp
 
 #from train_dreambooth import DreamBoothDataset4Med
 
@@ -413,8 +415,6 @@ class DreamBoothDataset(Dataset):
         return example
 
 
-from meddatasets import dataset_records,dataset_names
-from meddatasets import load_with_coco_per_ann,polygon2vertex_coords,poly2mask,preprocess,load_polyp
 class DreamBoothDataset4Med(Dataset):
     """
     A dataset to prepare the instance and class images with the prompts for fine-tuning the model.
