@@ -257,7 +257,7 @@ def parse_args():
     parser.add_argument(
         "--checkpointing_steps",
         type=int,
-        default=10000,
+        default=1000000,
         help=(
             "Save a checkpoint of the training state every X updates. These checkpoints can be used both as final"
             " checkpoints in case they are better than the last checkpoint and are suitable for resuming training"
@@ -439,8 +439,6 @@ class DreamBoothDataset4Med(Dataset):
         self.dataset_name = dataset_names[self.dataset_id]
         self.instance_data_folders = dataset_records[self.dataset_name]
         
-        args.instance_prompt = dataset_prompts[self.dataset_name]
-        
         self.size = size
         self.center_crop = center_crop
         self.tokenizer = tokenizer
@@ -471,7 +469,9 @@ class DreamBoothDataset4Med(Dataset):
             self.instance_images_path += temp_instance_images_path
         
         self.num_instance_images = len(self.instance_images_path)
+        
         self.instance_prompt = dataset_prompts[self.dataset_name]
+        
         self._length = self.num_instance_images
 
         if class_data_root is not None:
@@ -506,6 +506,23 @@ class DreamBoothDataset4Med(Dataset):
 
     def __len__(self):
         return self._length
+    
+    def __iadd__(self, other):
+        self.instances  +=  other.instances
+        self.instance_images_path += other.instance_images_path
+        
+        self.images_cache_on = self.images_cache_on and other.images_cache_on
+        if self.images_cache_on:
+            self.images_cache+=other.images_cache
+            self.masks_cache+=other.masks_cache
+            
+        self._length+=other._length
+        
+        return self    
+    
+    def __add__(self, other):
+        self+=other
+        return self
     
     def cache_images(self):
         if self.images_cache_on:
@@ -774,7 +791,28 @@ def main():
         center_crop=args.center_crop,
     )
     '''
+    args.dataset_id = 3
     train_dataset = eval(args.dataset)(
+        instance_data_root=args.instance_data_dir,
+        instance_prompt=args.instance_prompt,
+        class_data_root=args.class_data_dir if args.with_prior_preservation else None,
+        class_prompt=args.class_prompt,
+        tokenizer=tokenizer,
+        size=args.resolution,
+        center_crop=args.center_crop,
+    )
+    args.dataset_id = 4
+    train_dataset+=eval(args.dataset)(
+        instance_data_root=args.instance_data_dir,
+        instance_prompt=args.instance_prompt,
+        class_data_root=args.class_data_dir if args.with_prior_preservation else None,
+        class_prompt=args.class_prompt,
+        tokenizer=tokenizer,
+        size=args.resolution,
+        center_crop=args.center_crop,
+    )
+    args.dataset_id = 5
+    train_dataset+=eval(args.dataset)(
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
         class_data_root=args.class_data_dir if args.with_prior_preservation else None,
@@ -851,7 +889,7 @@ def main():
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
         
-    if args.max_train_steps <= 10:
+    if args.max_train_steps <= 100:
         args.max_train_steps = args.max_train_steps*len(train_dataloader)
 
     lr_scheduler = get_scheduler(

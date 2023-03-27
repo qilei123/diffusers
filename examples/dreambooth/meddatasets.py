@@ -11,6 +11,9 @@ from math import floor
 from scipy import ndimage
 import glob
 from pathlib import Path 
+from torch.utils.data import Dataset
+from torchvision import transforms
+import pickle
 
 PROMPTS=["a photo of gastroscopy disease",
          "a photo of NBI disease",
@@ -90,7 +93,7 @@ def load_with_coco_per_ann(root_dir,image_folder='crop_images',
             instance["cat_id"] = ann["category_id"]
             
             img = coco.loadImgs([ann["image_id"]])[0]
-            instance["img_dir"] = os.path.join(root_dir,image_folder,img['file_name']).replace("images/images","images")
+            instance["img_dir"] = os.path.join(root_dir,image_folder,img['file_name']).replace("/images/images/","/images/")
             if not os.path.isfile(instance["img_dir"]):
                 print(instance["img_dir"])
                 continue
@@ -261,8 +264,53 @@ def load_test_data(instance_index=0,with_crop = False,bbox_extend = 1):
     
     assert len(images)>instance_index, "no more than "+str(instance_index+1)+" test images"
     
-    return images[instance_index],Image.fromarray(masks[instance_index]*255)
+    return images[instance_index],Image.fromarray(masks[instance_index]*255).convert("L")
 
+def load_test_data_coco(with_crop = False,bbox_extend = 1,cat_ids = [1]):
+    root_dir='/home/ycao/DEVELOPMENTS/diffusers/datasets/test4images'
+    image_folder='images'
+    ann_file_dir='annotations/instances_default2.json' 
+    instances, instance_images_path = load_with_coco_per_ann(root_dir,image_folder,ann_file_dir,cat_ids)
+    sample_images,sample_masks = [],[]
+
+    for image_name,ann in zip(instance_images_path,instances):
+        
+        if bbox_extend>1:
+            ann["bbox"][0] -= ann["bbox"][2]*(bbox_extend-1)/2
+            ann["bbox"][1] -= ann["bbox"][3]*(bbox_extend-1)/2
+            ann["bbox"][2] = ann["bbox"][2]*bbox_extend
+            ann["bbox"][3] = ann["bbox"][3]*bbox_extend
+        
+        sample = {}
+        
+        image = Image.open(image_name)
+        
+        height = image.height
+        
+        width = image.width
+        
+        ann["bbox"][0] = 1 if ann["bbox"][0]<0 else ann["bbox"][0]
+        ann["bbox"][1] = 1 if ann["bbox"][1]<0 else ann["bbox"][1]
+        ann["bbox"][2] = width-ann["bbox"][0] if ann["bbox"][0]+ann["bbox"][2]>width else ann["bbox"][2]
+        ann["bbox"][3] = height-ann["bbox"][1] if ann["bbox"][1]+ann["bbox"][3]>height else ann["bbox"][3]        
+        
+        if with_crop:
+            image = image.crop((int(ann['bbox'][0]),int(ann['bbox'][1]),
+                        int(ann['bbox'][0]+ann['bbox'][2]),int(ann['bbox'][1]+ann['bbox'][3])))
+        
+        sample["image"] = image
+
+        mask = poly2mask(*polygon2vertex_coords(ann["polygon"]),(height,width))
+
+        if with_crop:
+            mask = mask[int(ann['bbox'][1]):int(ann['bbox'][1]+ann['bbox'][3]),
+                        int(ann['bbox'][0]):int(ann['bbox'][0]+ann['bbox'][2])]   
+        sample["mask"]= mask
+            
+        sample_images.append(sample['image'])
+        sample_masks.append(Image.fromarray(sample["mask"]*255).convert("L"))
+
+    return sample_images,sample_masks
 
 def patch_on_original_image(patch_direct = True,bbox_extend = 1.2):
     
@@ -338,9 +386,12 @@ def patch_on_original_image(patch_direct = True,bbox_extend = 1.2):
         
         image.save(os.path.join(patchs_dir,"patched_images",image_name))
 
+
 if __name__ == "__main__":
     #patch_on_original_image(False)
-    o1,o2 = load_polyp("/home/ycao/DEVELOPMENTS/diffusers/datasets/dechun_polyp/polyp_dataset_v2",
-                       images_folder="images",anns_folder="annotation/train")
-    print(len(o2))
+    #o1,o2 = load_polyp("/home/ycao/DEVELOPMENTS/diffusers/datasets/dechun_polyp/polyp_dataset_v2",
+    #                   images_folder="images",anns_folder="annotation/train")
+    #print(len(o2))
+    sample_images,sample_masks = load_test_data_coco()
+    print(len(sample_images))
     
