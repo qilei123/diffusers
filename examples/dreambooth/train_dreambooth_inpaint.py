@@ -516,7 +516,9 @@ class DreamBoothDataset4Med(Dataset):
             self.images_cache+=other.images_cache
             self.masks_cache+=other.masks_cache
             
-        self._length+=other._length
+        #self._length+=other._length
+        self.num_instance_images = len(self.images_cache)
+        self._length = self.num_instance_images 
         
         return self    
     
