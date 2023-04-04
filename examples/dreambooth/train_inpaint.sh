@@ -39,7 +39,7 @@ export INSTANCE_DIR="/home/ycao/DEVELOPMENTS/diffusers/datasets/"
 #   --with_crop
 
 
-export OUTPUT_DIR="output/DreamBoothDataset4Med_inpaint_512_crop1_mask1_bbox2_db3_4_5x10/"
+export OUTPUT_DIR="output/DreamBoothDataset4Med_inpaint_512_crop0_mask1_bbox2_db3_4_5x10/"
 accelerate launch train_dreambooth_inpaint.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
@@ -54,5 +54,5 @@ accelerate launch train_dreambooth_inpaint.py \
   --max_train_steps=10 \
   --with_mask \
   --bbox_extend_scale 2 \
-  --dataset_id 5 \
-  --with_crop
+  --dataset_id 5 #\
+  #--with_crop

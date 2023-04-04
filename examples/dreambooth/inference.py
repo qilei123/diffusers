@@ -5,6 +5,8 @@ from diffusers import StableDiffusionInpaintPipeline as StableDiffusionInpaintPi
 
 from meddatasets import load_test_data,dataset_prompts,dataset_names,load_test_data_coco
 
+import glob
+
 def inference_basic():
     model_id = "output/DreamBoothDataset_NBI_CAT1"
     pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
@@ -19,7 +21,7 @@ def inference_basic():
         
 def inference_repaint():
     dataset_id = 5
-    model_id = "output/DreamBoothDataset4Med_inpaint_512_crop1_mask1_bbox2_db"+str(dataset_id)+"x10"
+    model_id = "output/DreamBoothDataset4Med_inpaint_512_crop1_mask1_bbox2_db3_4_"+str(dataset_id)+"x10"
     pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
     pipe.safety_checker = lambda images, clip_input: (images, False)
     
@@ -44,7 +46,24 @@ def inference_repaint():
             image = pipe(prompt, image = original_image, mask_image = mask, num_inference_steps = 50).images[0]
             image.save(save_dir+str(i).zfill(5)+".png")    
 
+def inference_NBI():
+    for i in [1,2,3]:
+        org_files = glob.glob(os.path.join('/home/ycao/DEVELOPMENTS/diffusers/datasets/nbi_v4/train/',str(i),"*.jpg"))
+        generate_n = 2000-len(org_files)
+        generate_n = 3000
+        model_id = "output/DreamBoothDataset_NBI_CAT"+str(i)
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+        pipe.safety_checker = lambda images, clip_input: (images, False)
+        save_dir = model_id+"/inference_images_a/"
+        os.makedirs(save_dir,exist_ok=True)
+        prompt = "a photo of gastroscopy disease"
+        for i in range(generate_n):
+            image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+
+            image.save(save_dir+str(i).zfill(5)+".png")
+
 if __name__ == '__main__':
     #inference_repaint()
-    inference_basic()
+    #inference_basic()
+    inference_NBI()
     pass
