@@ -20,12 +20,13 @@ def inference_basic():
         image.save(save_dir+str(i).zfill(5)+".png")
         
 def inference_repaint():
-    dataset_id = 5
-    model_id = "output/DreamBoothDataset4Med_inpaint_512_crop1_mask1_bbox2_db3_4_"+str(dataset_id)+"x10"
+    dataset_id = 0
+    #model_id = "output/DreamBoothDataset4Med_inpaint_512_crop1_mask1_bbox1.2_db0x100"
+    model_id = "27_dreambooth_output/DreamBoothDataset4Med_inpaint_512_crop0_mask1_bbox1.2_db0x200"
     pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
     pipe.safety_checker = lambda images, clip_input: (images, False)
     
-    original_images,masks = load_test_data_coco(with_crop=True,bbox_extend=2,cat_ids = [1])
+    original_images,masks = load_test_data_coco(with_crop=False,bbox_extend=1.2,cat_ids = [1,2])
 
     
     for img_id in range(len(original_images)):
@@ -47,10 +48,10 @@ def inference_repaint():
             image.save(save_dir+str(i).zfill(5)+".png")    
 
 def inference_NBI():
-    for i in [1,2,3]:
+    for i in [3]:
         org_files = glob.glob(os.path.join('/home/ycao/DEVELOPMENTS/diffusers/datasets/nbi_v4/train/',str(i),"*.jpg"))
-        generate_n = 2000-len(org_files)
-        generate_n = 3000
+        generate_n = 5000-len(org_files)
+        #generate_n = 3000
         model_id = "output/DreamBoothDataset_NBI_CAT"+str(i)
         pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
         pipe.safety_checker = lambda images, clip_input: (images, False)
@@ -62,8 +63,11 @@ def inference_NBI():
 
             image.save(save_dir+str(i).zfill(5)+".png")
 
+def inference_repaint_random_mask():
+    pass
+
 if __name__ == '__main__':
-    #inference_repaint()
+    inference_repaint()
     #inference_basic()
-    inference_NBI()
+    #inference_NBI()
     pass

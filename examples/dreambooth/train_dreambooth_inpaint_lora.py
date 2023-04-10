@@ -1,9 +1,7 @@
 import argparse
 import hashlib
-import itertools
 import math
 import os
-import pickle
 import random
 from pathlib import Path
 from typing import Optional
@@ -22,27 +20,19 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from diffusers import (
-    AutoencoderKL,
-    DDPMScheduler,
-    StableDiffusionInpaintPipeline,
-    StableDiffusionPipeline,
-    UNet2DConditionModel,
-)
+from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionInpaintPipeline, UNet2DConditionModel
+from diffusers.loaders import AttnProcsLayers
+from diffusers.models.cross_attention import LoRACrossAttnProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
+from diffusers.utils.import_utils import is_xformers_available
 
-from meddatasets import dataset_records_id,dataset_prompts, \
-                        dataset_ann_file_dirs,dataset_image_folders, \
-                        dataset_records,dataset_names
-from meddatasets import load_with_coco_per_ann,polygon2vertex_coords,poly2mask,load_polyp
-
-#from train_dreambooth import DreamBoothDataset4Med
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.13.0.dev0")
 
 logger = get_logger(__name__)
+
 
 def prepare_mask_and_masked_image(image, mask):
     image = np.array(image.convert("RGB"))
@@ -146,7 +136,7 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="text-inversion-model",
+        default="dreambooth-inpaint-model",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
@@ -257,7 +247,7 @@ def parse_args():
     parser.add_argument(
         "--checkpointing_steps",
         type=int,
-        default=1000000,
+        default=500,
         help=(
             "Save a checkpoint of the training state every X updates. These checkpoints can be used both as final"
             " checkpoints in case they are better than the last checkpoint and are suitable for resuming training"
@@ -273,38 +263,9 @@ def parse_args():
             ' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
         ),
     )
-
-    #----------------custom----------------
     parser.add_argument(
-        "--dataset",
-        type=str,
-        default="DreamBoothDataset",
-        choices=["DreamBoothDataset", "DreamBoothDataset4Med"],
-        help=(
-            "dataset name that can be used in the training process"
-        ),
+        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
-    parser.add_argument(
-        "--with_mask",
-        action="store_true",
-        default=False,
-        help="load dataset with mask in medical images",
-    )
-    
-    parser.add_argument(
-        "--with_crop",
-        action="store_true",
-        default=False,
-        help="crop with extended bbox",
-    )
-    parser.add_argument(
-        "--bbox_extend_scale", type=float, default=1, help="when crop, scale to extend the bbox"
-    )    
-    
-    parser.add_argument(
-        "--dataset_id", type=int, default=0,choices = dataset_records_id, help="when crop, scale to extend the bbox"
-    )  
-    
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -322,8 +283,6 @@ def parse_args():
 
     return args
 
-
-args = parse_args()
 
 class DreamBoothDataset(Dataset):
     """
@@ -415,210 +374,6 @@ class DreamBoothDataset(Dataset):
         return example
 
 
-class DreamBoothDataset4Med(Dataset):
-    """
-    A dataset to prepare the instance and class images with the prompts for fine-tuning the model.
-    It pre-processes the images and the tokenizes prompts.
-    """
-
-    def __init__(
-        self,
-        instance_data_root,
-        instance_prompt,
-        tokenizer,
-        class_data_root=None,
-        class_prompt=None,
-        size=512,
-        center_crop=False,
-    ):
-        #超参数，目前还只能在代码中修改
-        self.with_crop = args.with_crop
-        self.bbox_extend = args.bbox_extend_scale
-        
-        self.dataset_id = args.dataset_id
-        self.dataset_name = dataset_names[self.dataset_id]
-        self.instance_data_folders = dataset_records[self.dataset_name]
-        
-        self.size = size
-        self.center_crop = center_crop
-        self.tokenizer = tokenizer
-
-        self.instance_data_root = Path(instance_data_root)
-        if not self.instance_data_root.exists():
-            raise ValueError(f"Instance {self.instance_data_root} images root doesn't exists.")
-
-        self.instances = []
-        
-        self.instance_images_path = []#list(Path(instance_data_root).iterdir())
-        
-        if 'polyp' in self.dataset_name:
-            load_data_fn = load_polyp
-        else:
-            load_data_fn = load_with_coco_per_ann
-        
-        for instance_data_folder in self.instance_data_folders:
-            
-            temp_instances,temp_instance_images_path = load_data_fn(
-                os.path.join(instance_data_root,instance_data_folder),
-                image_folder=dataset_image_folders[self.dataset_name],
-                ann_file_dir=dataset_ann_file_dirs[self.dataset_name],
-                cat_ids=self.instance_data_folders[instance_data_folder])
-            
-            self.instances += temp_instances
-            
-            self.instance_images_path += temp_instance_images_path
-        
-        self.num_instance_images = len(self.instance_images_path)
-        
-        self.instance_prompt = dataset_prompts[self.dataset_name]
-        
-        self._length = self.num_instance_images
-
-        if class_data_root is not None:
-            self.class_data_root = Path(class_data_root)
-            self.class_data_root.mkdir(parents=True, exist_ok=True)
-            self.class_images_path = list(self.class_data_root.iterdir())
-            self.num_class_images = len(self.class_images_path)
-            self._length = max(self.num_class_images, self.num_instance_images)
-            self.class_prompt = class_prompt
-        else:
-            self.class_data_root = None
-            
-        self.images_cache = []
-        self.masks_cache = []
-        self.images_cache_on = False
-        self.cache_images()
-
-        self.image_transforms_resize_and_crop = transforms.Compose(
-            [
-                transforms.Resize((size,size), interpolation=transforms.InterpolationMode.BILINEAR),
-                #去掉crop的操作，已保障图像的完整性
-                #transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
-            ]
-        )
-
-        self.image_transforms = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize([0.5], [0.5]),
-            ]
-        )
-
-    def __len__(self):
-        return self._length
-    
-    def __iadd__(self, other):
-        self.instances  +=  other.instances
-        self.instance_images_path += other.instance_images_path
-        
-        self.images_cache_on = self.images_cache_on and other.images_cache_on
-        if self.images_cache_on:
-            self.images_cache+=other.images_cache
-            self.masks_cache+=other.masks_cache
-            
-        #self._length+=other._length
-        self.num_instance_images = len(self.images_cache)
-        self._length = self.num_instance_images 
-        
-        return self    
-    
-    def __add__(self, other):
-        self+=other
-        return self
-    
-    def cache_images(self):
-        if self.images_cache_on:
-            pass
-        else:
-            if os.path.isfile(self.dataset_name+".cache"):
-                fptr = open(self.dataset_name+".cache", "rb")
-                cache_datas = pickle.load(fptr)
-                fptr.close() 
-                self.images_cache = cache_datas['images_cache'] 
-                self.masks_cache = cache_datas['masks_cache']              
-            else:
-                for instance_image_path,instance in zip(self.instance_images_path,self.instances):
-                    image,mask = self.preprocess(instance_image_path,instance)
-                    self.images_cache.append(image)
-                    self.masks_cache.append(mask)
-                    
-                cache_datas = {"images_cache":self.images_cache,"masks_cache":self.masks_cache}
-                fptr = open(self.dataset_name+".cache", "wb")  # open file in write binary mode
-                pickle.dump(cache_datas, fptr)  # dump list data into file 
-                fptr.close()                 
-                
-            self.images_cache_on = True
-
-    def preprocess(self,instance_image_path,instance):
-        image = Image.open(instance_image_path)
-        if self.bbox_extend>1:
-            instance["bbox"][0] -= instance["bbox"][2]*(self.bbox_extend-1)/2
-            instance["bbox"][1] -= instance["bbox"][3]*(self.bbox_extend-1)/2
-            instance["bbox"][2] = instance["bbox"][2]*self.bbox_extend
-            instance["bbox"][3] = instance["bbox"][3]*self.bbox_extend  
-
-        #check the boundary of the bbox
-        instance["bbox"][0] = 1 if instance["bbox"][0]<0 else instance["bbox"][0]
-        instance["bbox"][1] = 1 if instance["bbox"][1]<0 else instance["bbox"][1]
-        instance["bbox"][2] = instance["img_width"]-instance["bbox"][0] if instance["bbox"][0]+instance["bbox"][2]>instance["img_width"] else instance["bbox"][2]
-        instance["bbox"][3] = instance["img_height"]-instance["bbox"][1] if instance["bbox"][1]+instance["bbox"][3]>instance["img_height"] else instance["bbox"][3] 
-        
-        if self.with_crop:
-            image = image.crop((int(instance['bbox'][0]),int(instance['bbox'][1]),
-                                int(instance['bbox'][0]+instance['bbox'][2]),int(instance['bbox'][1]+instance['bbox'][3])))                
-        
-        mask = 255*poly2mask(*polygon2vertex_coords(instance['polygon']),(instance['img_shape'][1],instance['img_shape'][0]))
-        mask = Image.fromarray(mask).convert("L")
-        if self.with_crop:
-            mask =  mask.crop((int(instance['bbox'][0]),int(instance['bbox'][1]),
-                                int(instance['bbox'][0]+instance['bbox'][2]),int(instance['bbox'][1]+instance['bbox'][3])))  
-            
-        return image,mask
-
-    def __getitem__(self, index):
-        example = {}
-        real_index = index % self.num_instance_images
-        if self.images_cache_on:
-            instance_mask = self.masks_cache[real_index]
-            instance_image = self.images_cache[real_index] 
-        else:
-            instance_image,instance_mask = self.preprocess(self.instance_images_path[real_index],
-                                                      self.instances[real_index])
-        if not instance_image.mode == "RGB":
-            instance_image = instance_image.convert("RGB")
-        
-        instance_image = self.image_transforms_resize_and_crop(instance_image)
-        
-        example["PIL_images"] = instance_image
-        example["instance_images"] = self.image_transforms(instance_image)
-        if args.with_mask:
-            example["instance_masks"] = self.image_transforms_resize_and_crop(instance_mask)
-
-
-        example["instance_prompt_ids"] = self.tokenizer(
-            self.instance_prompt,
-            truncation=True,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            return_tensors="pt",
-        ).input_ids
-
-        if self.class_data_root:
-            class_image = Image.open(self.class_images_path[index % self.num_class_images])
-            if not class_image.mode == "RGB":
-                class_image = class_image.convert("RGB")
-            example["class_images"] = self.image_transforms(class_image)
-            example["class_prompt_ids"] = self.tokenizer(
-                self.class_prompt,
-                truncation=True,
-                padding="max_length",
-                max_length=self.tokenizer.model_max_length,
-                return_tensors="pt",
-            ).input_ids
-
-        return example
-
-
 class PromptDataset(Dataset):
     "A simple dataset to prepare the prompts to generate class images on multiple GPUs."
 
@@ -647,7 +402,7 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 
 
 def main():
-    #args = parse_args()
+    args = parse_args()
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator = Accelerator(
@@ -743,14 +498,64 @@ def main():
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
     unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
 
+    # We only train the additional adapter LoRA layers
     vae.requires_grad_(False)
-    if not args.train_text_encoder:
-        text_encoder.requires_grad_(False)
+    text_encoder.requires_grad_(False)
+    unet.requires_grad_(False)
 
-    if args.gradient_checkpointing:
-        unet.enable_gradient_checkpointing()
-        if args.train_text_encoder:
-            text_encoder.gradient_checkpointing_enable()
+    weight_dtype = torch.float32
+    if args.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif args.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+
+    # Move text_encode and vae to gpu.
+    # For mixed precision training we cast the text_encoder and vae weights to half-precision
+    # as these models are only used for inference, keeping weights in full precision is not required.
+    unet.to(accelerator.device, dtype=weight_dtype)
+    vae.to(accelerator.device, dtype=weight_dtype)
+    text_encoder.to(accelerator.device, dtype=weight_dtype)
+
+    if args.enable_xformers_memory_efficient_attention:
+        if is_xformers_available():
+            unet.enable_xformers_memory_efficient_attention()
+        else:
+            raise ValueError("xformers is not available. Make sure it is installed correctly")
+
+    # now we will add new LoRA weights to the attention layers
+    # It's important to realize here how many attention weights will be added and of which sizes
+    # The sizes of the attention layers consist only of two different variables:
+    # 1) - the "hidden_size", which is increased according to `unet.config.block_out_channels`.
+    # 2) - the "cross attention size", which is set to `unet.config.cross_attention_dim`.
+
+    # Let's first see how many attention processors we will have to set.
+    # For Stable Diffusion, it should be equal to:
+    # - down blocks (2x attention layers) * (2x transformer layers) * (3x down blocks) = 12
+    # - mid blocks (2x attention layers) * (1x transformer layers) * (1x mid blocks) = 2
+    # - up blocks (2x attention layers) * (3x transformer layers) * (3x down blocks) = 18
+    # => 32 layers
+
+    # Set correct lora layers
+    lora_attn_procs = {}
+    for name in unet.attn_processors.keys():
+        cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
+        if name.startswith("mid_block"):
+            hidden_size = unet.config.block_out_channels[-1]
+        elif name.startswith("up_blocks"):
+            block_id = int(name[len("up_blocks.")])
+            hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
+        elif name.startswith("down_blocks"):
+            block_id = int(name[len("down_blocks.")])
+            hidden_size = unet.config.block_out_channels[block_id]
+
+        lora_attn_procs[name] = LoRACrossAttnProcessor(
+            hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
+        )
+
+    unet.set_attn_processor(lora_attn_procs)
+    lora_layers = AttnProcsLayers(unet.attn_processors)
+
+    accelerator.register_for_checkpointing(lora_layers)
 
     if args.scale_lr:
         args.learning_rate = (
@@ -770,11 +575,8 @@ def main():
     else:
         optimizer_class = torch.optim.AdamW
 
-    params_to_optimize = (
-        itertools.chain(unet.parameters(), text_encoder.parameters()) if args.train_text_encoder else unet.parameters()
-    )
     optimizer = optimizer_class(
-        params_to_optimize,
+        lora_layers.parameters(),
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -782,7 +584,7 @@ def main():
     )
 
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-    '''
+
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
@@ -792,63 +594,16 @@ def main():
         size=args.resolution,
         center_crop=args.center_crop,
     )
-    '''
-    #args.dataset_id = 3 #3,4,5三个数据都是息肉，是专门用来训练息肉生成模型的数据集
-    
-    
-    train_dataset = eval(args.dataset)(
-        instance_data_root=args.instance_data_dir,
-        instance_prompt=args.instance_prompt,
-        class_data_root=args.class_data_dir if args.with_prior_preservation else None,
-        class_prompt=args.class_prompt,
-        tokenizer=tokenizer,
-        size=args.resolution,
-        center_crop=args.center_crop,
-    )
-    #dataset_ids =  [3,4,5]
-    #dataset_ids =  [2,6]
-    dataset_ids = []
-    if args.dataset_id in dataset_ids:
-        dataset_ids.remove(args.dataset_id)
-        
-    for dataset_id in dataset_ids:
-        args.dataset_id = dataset_id
-        train_dataset+=eval(args.dataset)(
-            instance_data_root=args.instance_data_dir,
-            instance_prompt=args.instance_prompt,
-            class_data_root=args.class_data_dir if args.with_prior_preservation else None,
-            class_prompt=args.class_prompt,
-            tokenizer=tokenizer,
-            size=args.resolution,
-            center_crop=args.center_crop,
-        )
-    '''
-    args.dataset_id = 5
-    train_dataset+=eval(args.dataset)(
-        instance_data_root=args.instance_data_dir,
-        instance_prompt=args.instance_prompt,
-        class_data_root=args.class_data_dir if args.with_prior_preservation else None,
-        class_prompt=args.class_prompt,
-        tokenizer=tokenizer,
-        size=args.resolution,
-        center_crop=args.center_crop,
-    )
-    '''
+
     def collate_fn(examples):
         input_ids = [example["instance_prompt_ids"] for example in examples]
         pixel_values = [example["instance_images"] for example in examples]
-        if args.with_mask:
-            mask_values = [example["instance_masks"] for example in examples]
 
         # Concat class and instance examples for prior preservation.
         # We do this to avoid doing two forward passes.
         if args.with_prior_preservation:
             input_ids += [example["class_prompt_ids"] for example in examples]
             pixel_values += [example["class_images"] for example in examples]
-            
-            if args.with_mask:
-                mask_values += [example["instance_masks"] for example in examples]            
-            
             pior_pil = [example["class_PIL_images"] for example in examples]
 
         masks = []
@@ -856,11 +611,7 @@ def main():
         for example in examples:
             pil_image = example["PIL_images"]
             # generate a random mask
-            if args.with_mask:
-                mask = example["instance_masks"]
-            else:
-                mask = random_mask(pil_image.size, 1, False)
-            
+            mask = random_mask(pil_image.size, 1, False)
             # prepare mask and masked image
             mask, masked_image = prepare_mask_and_masked_image(pil_image, mask)
 
@@ -870,10 +621,7 @@ def main():
         if args.with_prior_preservation:
             for pil_image in pior_pil:
                 # generate a random mask
-                if args.with_mask:
-                    mask = example["instance_masks"]
-                else:
-                    mask = random_mask(pil_image.size, 1, False)
+                mask = random_mask(pil_image.size, 1, False)
                 # prepare mask and masked image
                 mask, masked_image = prepare_mask_and_masked_image(pil_image, mask)
 
@@ -884,14 +632,13 @@ def main():
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
         input_ids = tokenizer.pad({"input_ids": input_ids}, padding=True, return_tensors="pt").input_ids
-        #input_ids = torch.cat(input_ids, dim=0)
         masks = torch.stack(masks)
         masked_images = torch.stack(masked_images)
         batch = {"input_ids": input_ids, "pixel_values": pixel_values, "masks": masks, "masked_images": masked_images}
         return batch
 
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.train_batch_size, shuffle=False, collate_fn=collate_fn
+        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn
     )
 
     # Scheduler and math around the number of training steps.
@@ -900,9 +647,6 @@ def main():
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
-        
-    #if args.max_train_steps <= 100:
-    #    args.max_train_steps = args.max_train_steps*len(train_dataloader)
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
@@ -911,28 +655,11 @@ def main():
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
-    if args.train_text_encoder:
-        unet, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet, text_encoder, optimizer, train_dataloader, lr_scheduler
-        )
-    else:
-        unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet, optimizer, train_dataloader, lr_scheduler
-        )
-    accelerator.register_for_checkpointing(lr_scheduler)
-
-    weight_dtype = torch.float32
-    if args.mixed_precision == "fp16":
-        weight_dtype = torch.float16
-    elif args.mixed_precision == "bf16":
-        weight_dtype = torch.bfloat16
-
-    # Move text_encode and vae to gpu.
-    # For mixed precision training we cast the text_encoder and vae weights to half-precision
-    # as these models are only used for inference, keeping weights in full precision is not required.
-    vae.to(accelerator.device, dtype=weight_dtype)
-    if not args.train_text_encoder:
-        text_encoder.to(accelerator.device, dtype=weight_dtype)
+    # Prepare everything with our `accelerator`.
+    lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        lora_layers, optimizer, train_dataloader, lr_scheduler
+    )
+    # accelerator.register_for_checkpointing(lr_scheduler)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -944,7 +671,7 @@ def main():
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("dreambooth", config=vars(args))
+        accelerator.init_trackers("dreambooth-inpaint-lora", config=vars(args))
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -1065,11 +792,7 @@ def main():
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    params_to_clip = (
-                        itertools.chain(unet.parameters(), text_encoder.parameters())
-                        if args.train_text_encoder
-                        else unet.parameters()
-                    )
+                    params_to_clip = lora_layers.parameters()
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
@@ -1095,14 +818,10 @@ def main():
 
         accelerator.wait_for_everyone()
 
-    # Create the pipeline using using the trained modules and save it.
+    # Save the lora layers
     if accelerator.is_main_process:
-        pipeline = StableDiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path,
-            unet=accelerator.unwrap_model(unet),
-            text_encoder=accelerator.unwrap_model(text_encoder),
-        )
-        pipeline.save_pretrained(args.output_dir)
+        unet = unet.to(torch.float32)
+        unet.save_attn_procs(args.output_dir)
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
