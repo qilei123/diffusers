@@ -302,8 +302,12 @@ def parse_args():
     )    
     
     parser.add_argument(
-        "--dataset_id", type=int, default=0,choices = dataset_records_id, help="when crop, scale to extend the bbox"
+        "--dataset_id", type=int, default=0,choices = dataset_records_id, help="use single dataset"
     )  
+    
+    parser.add_argument(
+        "--dataset_ids", type=str, default='', help="use multiple datasets"
+    )
     
 
     args = parser.parse_args()
@@ -794,7 +798,11 @@ def main():
     )
     '''
     #args.dataset_id = 3 #3,4,5三个数据都是息肉，是专门用来训练息肉生成模型的数据集
-    
+    dataset_ids = []
+    if len(args.dataset_ids):
+        dataset_ids = args.dataset_ids.split(",")
+        dataset_ids = [int(id) for id in dataset_ids]
+        args.dataset_id = dataset_ids[0]
     
     train_dataset = eval(args.dataset)(
         instance_data_root=args.instance_data_dir,
@@ -807,7 +815,7 @@ def main():
     )
     #dataset_ids =  [3,4,5]
     #dataset_ids =  [2,6]
-    dataset_ids = []
+    #dataset_ids = []
     if args.dataset_id in dataset_ids:
         dataset_ids.remove(args.dataset_id)
         

@@ -22,11 +22,11 @@ def inference_basic():
 def inference_repaint():
     dataset_id = 0
     #model_id = "output/DreamBoothDataset4Med_inpaint_512_crop1_mask1_bbox1.2_db0x100"
-    model_id = "27_dreambooth_output/DreamBoothDataset4Med_inpaint_512_crop0_mask1_bbox1.2_db0x200"
+    model_id = "27_dreambooth_output/DreamBoothDataset4Med_inpaint_512_crop1_mask1_bbox1.25_db2_3x20"
     pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
     pipe.safety_checker = lambda images, clip_input: (images, False)
     
-    original_images,masks = load_test_data_coco(with_crop=False,bbox_extend=1.2,cat_ids = [1,2])
+    original_images,masks = load_test_data_coco(with_crop=True,bbox_extend=1.25,cat_ids = [1,2])
 
     
     for img_id in range(len(original_images)):
