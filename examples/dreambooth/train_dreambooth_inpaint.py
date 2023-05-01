@@ -309,6 +309,16 @@ def parse_args():
         "--dataset_ids", type=str, default='', help="use multiple datasets"
     )
     
+    parser.add_argument(
+        "--checkpointing_epochs",
+        type=int,
+        default=-1,
+        help=(
+            "Save a checkpoint of the training state every X updates. These checkpoints can be used both as final"
+            " checkpoints in case they are better than the last checkpoint and are suitable for resuming training"
+            " using `--resume_from_checkpoint`."
+        ),
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -909,8 +919,8 @@ def main():
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
         
-    #if args.max_train_steps <= 100:
-    #    args.max_train_steps = args.max_train_steps*len(train_dataloader)
+    if args.checkpointing_epochs > 0:
+        args.checkpointing_steps = math.ceil(args.checkpointing_epochs*len(train_dataloader)/args.gradient_accumulation_steps)
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,

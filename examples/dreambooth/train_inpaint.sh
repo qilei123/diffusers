@@ -1,4 +1,4 @@
-export MODEL_NAME="runwayml/stable-diffusion-inpainting"
+#export MODEL_NAME="stabilityai/stable-diffusion-2-inpainting"
 export INSTANCE_DIR="/home/ycao/DEVELOPMENTS/diffusers/datasets/"
 
 
@@ -38,8 +38,8 @@ export INSTANCE_DIR="/home/ycao/DEVELOPMENTS/diffusers/datasets/"
 #   --dataset_id 4 \
 #   --with_crop
 
-
-export OUTPUT_DIR="27_dreambooth_output/DreamBoothDataset4Med_inpaint_512_crop1_mask1_bbox1.25_db2_3x25/"
+export MODEL_NAME="runwayml/stable-diffusion-inpainting"
+export OUTPUT_DIR="27_dreambooth_output/DreamBoothDataset4Med_inpaint1_512_crop1_mask1_bbox1.25_db2_6x25/"
 accelerate launch train_dreambooth_inpaint.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
@@ -51,14 +51,15 @@ accelerate launch train_dreambooth_inpaint.py \
   --learning_rate=1e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --num_train_epochs=25 \
+  --num_train_epochs=20 --checkpointing_epochs=5 \
   --with_mask \
   --bbox_extend_scale 1.25 \
-  --dataset_ids "2,3" \
+  --dataset_ids "2,6" \
   --with_crop
   #--max_train_steps=5000
 
-export OUTPUT_DIR="27_dreambooth_output/DreamBoothDataset4Med_inpaint_512_crop1_mask1_bbox1.25_db2_3x15/"
+export MODEL_NAME="stabilityai/stable-diffusion-2-inpainting"
+export OUTPUT_DIR="27_dreambooth_output/DreamBoothDataset4Med_inpaint2_512_crop1_mask1_bbox1.25_db2_6x25/"
 accelerate launch train_dreambooth_inpaint.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
@@ -70,8 +71,9 @@ accelerate launch train_dreambooth_inpaint.py \
   --learning_rate=1e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --num_train_epochs=15 \
+  --num_train_epochs=20 --checkpointing_epochs=5 \
   --with_mask \
   --bbox_extend_scale 1.25 \
-  --dataset_ids "2,3" \
+  --dataset_ids "2,6" \
   --with_crop
+

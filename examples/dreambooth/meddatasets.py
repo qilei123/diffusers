@@ -70,6 +70,7 @@ dataset_image_folders = {'dataset_test':IMAGE_FOLDERS[0],
 
 dataset_names = ['dataset_test','dataset1','dataset2','polyp1','polyp2','polyp3','dataset3']
 #他们的id分别为0,1,2,3,4,5,6
+#其中0，1,2,6为胃部病变数据，3,4,5为polyp病变
 dataset_records_id = [i for i in range(len(dataset_names))]
 
 def extend_bbox(bbox,bbox_extend_scale):

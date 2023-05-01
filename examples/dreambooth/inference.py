@@ -1,7 +1,10 @@
 from diffusers import StableDiffusionPipeline
 import torch
 import os
+import numpy as np
 from diffusers import StableDiffusionInpaintPipeline as StableDiffusionInpaintPipeline
+from diffusers.utils import load_image,torch_device
+from diffusers import PaintByExamplePipeline
 
 from meddatasets import load_test_data,dataset_prompts,dataset_names,load_test_data_coco
 
@@ -66,8 +69,49 @@ def inference_NBI():
 def inference_repaint_random_mask():
     pass
 
+
+def test_paint_by_example():
+    # make sure here that pndm scheduler skips prk
+    init_image = load_image(
+        "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+        "/paint_by_example/dog_in_bucket.png"
+    )
+    mask_image = load_image(
+        "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+        "/paint_by_example/mask.png"
+    )
+    example_image = load_image(
+        "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+        "/paint_by_example/panda.jpg"
+    )
+
+    pipe = PaintByExamplePipeline.from_pretrained("Fantasy-Studio/Paint-by-Example")
+    pipe = pipe.to(torch_device)
+    pipe.set_progress_bar_config(disable=None)
+
+    generator = torch.manual_seed(321)
+    output = pipe(
+        image=init_image,
+        mask_image=mask_image,
+        example_image=example_image,
+        generator=generator,
+        guidance_scale=5.0,
+        num_inference_steps=50,
+    )
+
+    image = output.images
+    
+    temp_dir = "27_dreambooth_output/TEMP/"
+    
+    init_image.save(temp_dir+"org_test_pbe.png")
+    mask_image.save(temp_dir+"pbe_mask.png")
+    example_image.save(temp_dir+"pbe_example.png")
+    image[0].save(temp_dir+"test_pbe.png")
+
+
 if __name__ == '__main__':
-    inference_repaint()
+    #inference_repaint()
     #inference_basic()
     #inference_NBI()
+    test_paint_by_example()
     pass
