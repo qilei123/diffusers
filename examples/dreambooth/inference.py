@@ -2,6 +2,7 @@ from diffusers import StableDiffusionPipeline
 import torch
 import os
 import numpy as np
+from PIL import Image
 from diffusers import StableDiffusionInpaintPipeline as StableDiffusionInpaintPipeline
 from diffusers.utils import load_image,torch_device
 from diffusers import PaintByExamplePipeline
@@ -25,7 +26,7 @@ def inference_basic():
 def inference_repaint():
     dataset_id = 0
     #model_id = "output/DreamBoothDataset4Med_inpaint_512_crop1_mask1_bbox1.2_db0x100"
-    model_id = "27_dreambooth_output/DreamBoothDataset4Med_inpaint_512_crop1_mask1_bbox1.25_db2_3x20"
+    model_id = "27_dreambooth_output/DreamBoothDataset4Med_inpaint2_512_crop1_mask1_bbox1.25_db2_6x25"
     pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
     pipe.safety_checker = lambda images, clip_input: (images, False)
     
@@ -69,9 +70,22 @@ def inference_NBI():
 def inference_repaint_random_mask():
     pass
 
+current_folder = 'examples/dreambooth/'
 
+def load_selected_patches():
+    patches_folder = current_folder + '27_dreambooth_output/DreamBoothDataset4Med_inpaint_512_crop1_mask1_bbox1.25_db2_3x20/inference_images'
+    patches_num = 13
+    patches_ids = [4]*patches_num
+    patches = []
+    for i in range(patches_num):
+        patches.append(Image.open(os.path.join(patches_folder,str(i),str(patches_ids[i]).zfill(5)+'.png')))
+        
+    return patches
 def test_paint_by_example():
+    original_images,masks = load_test_data_coco(with_crop=False,bbox_extend=1.25,cat_ids = [1,2])
+    patches = load_selected_patches()
     # make sure here that pndm scheduler skips prk
+    '''
     init_image = load_image(
         "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
         "/paint_by_example/dog_in_bucket.png"
@@ -84,34 +98,40 @@ def test_paint_by_example():
         "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
         "/paint_by_example/panda.jpg"
     )
-
+    '''
+    input_size = 512
     pipe = PaintByExamplePipeline.from_pretrained("Fantasy-Studio/Paint-by-Example")
     pipe = pipe.to(torch_device)
     pipe.set_progress_bar_config(disable=None)
+    index = 0
+    for init_image, mask_image,example_image in zip(original_images,masks,patches):
+        init_image = init_image.resize((input_size,input_size))
+        #mask_image = mask_image*255
+        mask_image = mask_image.convert('RGB').resize((input_size,input_size))
+        generator = torch.manual_seed(321)
+        output = pipe(
+            image=init_image,
+            mask_image=mask_image,
+            example_image=example_image,
+            generator=generator,
+            guidance_scale=5.0,
+            num_inference_steps=50,
+        )
 
-    generator = torch.manual_seed(321)
-    output = pipe(
-        image=init_image,
-        mask_image=mask_image,
-        example_image=example_image,
-        generator=generator,
-        guidance_scale=5.0,
-        num_inference_steps=50,
-    )
-
-    image = output.images
-    
-    temp_dir = "27_dreambooth_output/TEMP/"
-    
-    init_image.save(temp_dir+"org_test_pbe.png")
-    mask_image.save(temp_dir+"pbe_mask.png")
-    example_image.save(temp_dir+"pbe_example.png")
-    image[0].save(temp_dir+"test_pbe.png")
+        image = output.images
+        
+        temp_dir = current_folder + "27_dreambooth_output/TEMP/"
+        
+        init_image.save(temp_dir+str(index)+"_org_test_pbe.png")
+        mask_image.save(temp_dir+str(index)+"_pbe_mask.png")
+        example_image.save(temp_dir+str(index)+"_pbe_example.png")
+        image[0].save(temp_dir+str(index)+"_test_pbe.png")
+        index+=1
 
 
 if __name__ == '__main__':
-    #inference_repaint()
+    inference_repaint()
     #inference_basic()
     #inference_NBI()
-    test_paint_by_example()
+    #test_paint_by_example()
     pass

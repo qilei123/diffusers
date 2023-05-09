@@ -312,7 +312,18 @@ def parse_args():
     parser.add_argument(
         "--checkpointing_epochs",
         type=int,
-        default=-1,
+        default=0,
+        help=(
+            "Save a checkpoint of the training state every X updates. These checkpoints can be used both as final"
+            " checkpoints in case they are better than the last checkpoint and are suitable for resuming training"
+            " using `--resume_from_checkpoint`."
+        ),
+    )
+    
+    parser.add_argument(
+        "--checkpointing_epoch_list",
+        type=str,
+        default='',
         help=(
             "Save a checkpoint of the training state every X updates. These checkpoints can be used both as final"
             " checkpoints in case they are better than the last checkpoint and are suitable for resuming training"
@@ -921,6 +932,12 @@ def main():
         
     if args.checkpointing_epochs > 0:
         args.checkpointing_steps = math.ceil(args.checkpointing_epochs*len(train_dataloader)/args.gradient_accumulation_steps)
+        
+    if args.checkpointing_epoch_list != '':
+        checkpointing_epoch_list = args.checkpointing_epoch_list.split(',')
+        checkpointing_epoch_list = [int(x) for x in checkpointing_epoch_list]
+    else:
+        checkpointing_epoch_list = []
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
@@ -1098,9 +1115,13 @@ def main():
                 progress_bar.update(1)
                 global_step += 1
 
-                if global_step % args.checkpointing_steps == 0:
+                if (global_step % args.checkpointing_steps == 0) or (epoch in checkpointing_epoch_list):
+                    if epoch in checkpointing_epoch_list:
+                        checkpoint_id = epoch
+                    else:
+                        checkpoint_id = global_step
                     if accelerator.is_main_process:
-                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                        save_path = os.path.join(args.output_dir, f"checkpoint-{checkpoint_id}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 

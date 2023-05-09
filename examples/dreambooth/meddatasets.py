@@ -281,7 +281,7 @@ def load_test_data(instance_index=0,with_crop = False,bbox_extend = 1):
 
 def load_test_data_coco(root_dir = '',with_crop = False,bbox_extend = 1,cat_ids = [1],with_bboxes=False,pil_mask=True):
     if root_dir=='':
-        root_dir='/home/ycao/DEVELOPMENTS/diffusers/datasets/test4images'
+        root_dir='/home/ycao/DATASETS/test4images'
     image_folder='images'
     ann_file_dir='annotations/instances_default2.json' 
     instances, instance_images_path = load_with_coco_per_ann(root_dir,image_folder,ann_file_dir,cat_ids)
